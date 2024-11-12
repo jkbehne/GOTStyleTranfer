@@ -107,13 +107,24 @@ def getImages(contentPath: str, stylePath: str, size: int) -> Tuple[torch.Tensor
     Imst = Imst.unsqueeze(0)
     return Imct, Imst
 
+def getImage(path: str) -> torch.Tensor:
+    '''
+        @brief Write something here...
+    '''
+    # Load image into PIL
+    Im = Image.open(path).convert('RGB')
+    tform = transforms.ToTensor()
+    Imt = tform(Im)
+    Imt = Imt.cpu().unsqueeze(0)
+    return Imt
+
 def styleTransferFineToCoarse(model: VGGEncDec,
                               Ic: torch.Tensor,
                               Is: torch.Tensor,
                               outName: str,
                               dirName: str,
                               weights: List[float]) -> None:
-    assert Ic.shape == Is.shape, "Input images must have the same shape"
+    # assert Ic.shape == Is.shape, "Input images must have the same shape"
     N, C, M, N = Ic.shape
     start = time.time()
     w5 = weights[0]
@@ -188,7 +199,7 @@ def styleTransfer(model: VGGEncDec,
                   outName: str,
                   dirName: str,
                   weights: List[float]) -> None:
-    assert Ic.shape == Is.shape, "Input images must have the same shape"
+    # assert Ic.shape == Is.shape, "Input images must have the same shape"
     N, C, M, N = Ic.shape
     start = time.time()
     w5 = weights[0]
@@ -288,6 +299,8 @@ if __name__ == '__main__':
     # Finish the setup
     # weights = [0.0, 0.0, 0.5, 0.85, 0.85]
     weights = [0.7, 0.7, 0.5, 0.1, 0.1]
+    Ic = getImage(args.contentPath)
+    Is = getImage(args.stylePath)
     Ic, Is = getImages(args.contentPath, args.stylePath, args.size)
     vgg = VGGEncDec(args)
     if args.cuda:
