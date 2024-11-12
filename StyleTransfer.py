@@ -203,6 +203,8 @@ def styleTransfer(model: VGGEncDec,
     N, C, M, N = Ic.shape
     start = time.time()
     w5 = weights[0]
+    print(f"model.e1 is CUDA = {next(model.e1.parameters()).is_cuda}")
+    print(f"Ic is CUDA = {Ic.is_cuda}")
     c5 = model.e1(Ic)
     s5 = model.e1(Is)
     c5 = c5.data.cpu().squeeze(0)
