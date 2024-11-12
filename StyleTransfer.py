@@ -311,14 +311,14 @@ if __name__ == '__main__':
         device = torch.device("cpu")
 
     # Do the actual style transfer for a single image
-    vgg.to(device)
-    Ic.to(device)
-    Is.to(device)
     if args.contentOutName is not None:
         torchvision.utils.save_image(Ic.data.cpu().float(), os.path.join(args.outFolder, args.contentOutName))
     if args.styleOutName is not None:
         torchvision.utils.save_image(Is.data.cpu().float(), os.path.join(args.outFolder, args.styleOutName))
     with torch.no_grad():
+        vgg.to(device)
+        Ic.to(device)
+        Is.to(device)
         if not args.fineToCoarse:
             styleTransfer(vgg, Ic, Is, args.outName, args.outFolder, weights)
         else:
