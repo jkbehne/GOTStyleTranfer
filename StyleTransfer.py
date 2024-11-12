@@ -283,7 +283,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if not os.path.exists(args.outFolder):
-        os.makedirs(args.outf)
+        os.makedirs(args.outFolder)
 
     # Finish the setup
     # weights = [0.0, 0.0, 0.5, 0.85, 0.85]
