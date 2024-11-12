@@ -301,7 +301,7 @@ if __name__ == '__main__':
     weights = [0.7, 0.7, 0.5, 0.1, 0.1]
     Ic = getImage(args.contentPath)
     Is = getImage(args.stylePath)
-    Ic, Is = getImages(args.contentPath, args.stylePath, args.size)
+    # Ic, Is = getImages(args.contentPath, args.stylePath, args.size)
     vgg = VGGEncDec(args)
     if args.cuda:
         device = torch.device("cuda")
