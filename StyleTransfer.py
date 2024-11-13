@@ -64,7 +64,7 @@ def symmetrize(A: torch.Tensor, tol: float = 1e-3) -> torch.Tensor:
     m, _ = A.shape
     return 0.5 * (A + A.t()) + tol * torch.eye(m)
 
-def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int = 1024) -> torch.Tensor:
+def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int = 8192) -> torch.Tensor:
     C, H, W = Fc.size()
     Fcrs = torch.reshape(Fc, (C, H * W))
     Fsrs = torch.reshape(Fs, (C, H * W))
