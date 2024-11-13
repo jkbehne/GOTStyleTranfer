@@ -99,6 +99,9 @@ def getImages(contentPath: str, stylePath: str, size: int) -> Tuple[torch.Tensor
         Imc = scaleTform(Imc)
         m, n = Imc.size
         Ims = transforms.Resize((n, m))(Ims)
+    else:
+        m, n = Imc.size
+        Ims = transforms.Resize((n, m))(Ims)
 
     toTensorTform = transforms.ToTensor()
     Imct = toTensorTform(Imc)
@@ -297,8 +300,8 @@ if __name__ == '__main__':
 
     # Do the actual style transfer for a single image
     vgg.to(device)
-    Ic.to(device)
-    Is.to(device)
+    Ic = Ic.to(device)
+    Is = Is.to(device)
     if args.contentOutName is not None:
         torchvision.utils.save_image(Ic.data.cpu().float(), os.path.join(args.outFolder, args.contentOutName))
     if args.styleOutName is not None:
