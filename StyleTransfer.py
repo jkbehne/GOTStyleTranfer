@@ -101,6 +101,11 @@ def applyStlyeTransfer(
     decoders = [model.d5, model.d4, model.d3, model.d2, model.d1]
     Im = deepcopy(I)
 
+    print(len(encoders))
+    print(len(decoders))
+    print(len(tforms))
+    print(len(weights))
+
     # Perform transformation
     for encoder, decoder, tform, weight in zip(encoders, decoders, tforms, weights):
         print(f"Image shape = {Im.shape}")
