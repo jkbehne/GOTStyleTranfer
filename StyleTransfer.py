@@ -190,7 +190,8 @@ def styleTransfer(model: VGGEncDec,
                   Is: torch.Tensor,
                   outName: str,
                   dirName: str,
-                  weights: List[float]) -> None:
+                  weights: List[float],
+                  device) -> None:
     assert Ic.shape == Is.shape, "Input images must have the same shape"
     N, C, M, N = Ic.shape
     start = time.time()
@@ -200,7 +201,7 @@ def styleTransfer(model: VGGEncDec,
     c5 = c5.data.cpu().squeeze(0)
     s5 = s5.data.cpu().squeeze(0)
     got5 = gaussianOptimalTransport(c5, s5)
-    im5 = model.d1(((1.0 - w5) * c5 + w5 * got5).cpu().unsqueeze(0))
+    im5 = model.d1(((1.0 - w5) * c5 + w5 * got5).cpu().unsqueeze(0).to(device))
     im5 = im5[:, :, :M, :N]
     end = time.time()
     elapsed = end - start
@@ -213,7 +214,7 @@ def styleTransfer(model: VGGEncDec,
     c4 = c4.data.cpu().squeeze(0)
     s4 = s4.data.cpu().squeeze(0)
     got4 = gaussianOptimalTransport(c4, s4)
-    im4 = model.d2(((1.0 - w4) * c4 + w4 * got4).cpu().unsqueeze(0))
+    im4 = model.d2(((1.0 - w4) * c4 + w4 * got4).cpu().unsqueeze(0).to(device))
     im4 = im4[:, :, :M, :N]
     end = time.time()
     elapsed = end - start
@@ -226,7 +227,7 @@ def styleTransfer(model: VGGEncDec,
     c3 = c3.data.cpu().squeeze(0)
     s3 = s3.data.cpu().squeeze(0)
     got3 = gaussianOptimalTransport(c3, s3)
-    im3 = model.d3(((1.0 - w3) * c3 + w3 * got3).cpu().unsqueeze(0))
+    im3 = model.d3(((1.0 - w3) * c3 + w3 * got3).cpu().unsqueeze(0).to(device))
     im3 = im3[:, :, :M, :N]
     end = time.time()
     elapsed = end - start
@@ -239,7 +240,7 @@ def styleTransfer(model: VGGEncDec,
     c2 = c2.data.cpu().squeeze(0)
     s2 = s2.data.cpu().squeeze(0)
     got2 = gaussianOptimalTransport(c2, s2)
-    im2 = model.d4(((1.0 - w2) * c2 + w2 * got2).cpu().unsqueeze(0))
+    im2 = model.d4(((1.0 - w2) * c2 + w2 * got2).cpu().unsqueeze(0).to(device))
     im2 = im2[:, :, :M, :N]
     end = time.time()
     elapsed = end - start
@@ -252,7 +253,7 @@ def styleTransfer(model: VGGEncDec,
     c1 = c1.data.cpu().squeeze(0)
     s1 = s1.data.cpu().squeeze(0)
     got1 = gaussianOptimalTransport(c1, s1)
-    im = model.d5(((1.0 - w1) * c1 + w1 * got1).cpu().unsqueeze(0))
+    im = model.d5(((1.0 - w1) * c1 + w1 * got1).cpu().unsqueeze(0).to(device))
     im = im[:, :, :M, :N]
     end = time.time()
     elapsed = end - start
