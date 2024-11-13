@@ -287,11 +287,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if not os.path.exists(args.outFolder):
-        os.makedirs(args.outf)
+        os.makedirs(args.outFolder)
 
     # Finish the setup
     # weights = [0.0, 0.0, 0.5, 0.85, 0.85]
-    weights = [0.7, 0.7, 0.5, 0.1, 0.1]
+    weights = [0.2, 0.2, 0.5, 0.7, 0.7]
     Ic, Is = getImages(args.contentPath, args.stylePath, args.size)
     vgg = VGGEncDec(args)
     if args.cuda:
