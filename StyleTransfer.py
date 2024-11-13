@@ -8,7 +8,6 @@ import torch
 import torchvision
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torchinfo import summary
 
 from vgg_normalised_conv1_1 import vgg_normalised_conv1_1
 from vgg_normalised_conv2_1 import vgg_normalised_conv2_1
@@ -64,7 +63,7 @@ def symmetrize(A: torch.Tensor, tol: float = 1e-3) -> torch.Tensor:
     m, _ = A.shape
     return 0.5 * (A + A.t()) + tol * torch.eye(m)
 
-def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int = 8192) -> torch.Tensor:
+def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int = 16384) -> torch.Tensor:
     C, H, W = Fc.size()
     Fcrs = torch.reshape(Fc, (C, H * W))
     Fsrs = torch.reshape(Fs, (C, H * W))
