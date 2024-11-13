@@ -292,7 +292,7 @@ if __name__ == '__main__':
 
     # Finish the setup
     # weights = [0.0, 0.0, 0.5, 0.85, 0.85]
-    weights = [0.2, 0.2, 0.5, 0.7, 0.7]
+    weights = [0.7, 0.7, 0.5, 0.2, 0.2]
     Ic, Is = getImages(args.contentPath, args.stylePath, args.size)
     vgg = VGGEncDec(args)
     if args.cuda:
