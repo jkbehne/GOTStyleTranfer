@@ -103,6 +103,7 @@ def applyStlyeTransfer(
 
     # Perform transformation
     for encoder, decoder, tform, weight in zip(encoders, decoders, tforms, weights):
+        print(f"Image shape = {Im.shape}")
         F = encoder(Im)
         F = (F.data.cpu().squeeze(0)).to(device)
         Ft = tform(F)
