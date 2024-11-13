@@ -309,6 +309,6 @@ if __name__ == '__main__':
         torchvision.utils.save_image(Is.data.cpu().float(), os.path.join(args.outFolder, args.styleOutName))
     with torch.no_grad():
         if not args.fineToCoarse:
-            styleTransfer(vgg, Ic, Is, args.outName, args.outFolder, weights)
+            styleTransfer(vgg, Ic, Is, args.outName, args.outFolder, weights, device)
         else:
             styleTransferFineToCoarse(vgg, Ic, Is, args.outName, args.outFolder, weights)
