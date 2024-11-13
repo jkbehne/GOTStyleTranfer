@@ -1,6 +1,7 @@
 import argparse as ap
+from copy import deepcopy
 import os
-from typing import Tuple, List
+from typing import Callable, Tuple, List
 from PIL import Image
 import time
 
@@ -59,10 +60,154 @@ class VGGEncDec(nn.Module):
         self.d5.load_state_dict(torch.load(args.decoder5))
         self.d5.eval()
 
+class GOTTransform:
+    def __init__(
+        self,
+        A: torch.Tensor,
+        muc: torch.Tensor,
+        mus: torch.Tensor,
+        device: torch.device,
+    ) -> None:
+        self._A = A
+        self._muc = muc.cpu().unsqueeze(1)
+        self._mus = mus.cpu().unsqueeze(1)
+        self._device = device
+
+    def __call__(
+        self,
+        F: torch.Tensor,
+    ) -> torch.Tensor:
+        C, H, W = F.size()
+        N = H * W
+        Fr = torch.reshape(F, (C, N))
+        Fc = Fr - self._muc.repeat(1, N).to(self._device)
+        Ft = torch.matmul(self._A, Fc) + self._mus.repeat(1, N).to(self._device)
+        return torch.reshape(Ft, (C, H, W))
+
+def applyStlyeTransfer(
+    model: VGGEncDec,
+    I: torch.Tensor,
+    tforms: List[GOTTransform],
+    weights: List[float],
+    device: torch.device,
+) -> torch.Tensor:
+    # Verify inputs
+    assert len(tforms) == len(weights), "Must have as many weights as transforms"
+    K, C, M, N = I.size()
+    assert K == 1, "Expected a batch size of 1"
+
+    # Setup lists and such
+    encoders = [model.e5, model.e4, model.e3, model.e2, model.e1]
+    decoders = [model.d5, model.d4, model.d3, model.d2, model.d1]
+    Im = deepcopy(I)
+
+    # Perform transformation
+    for encoder, decoder, tform, weight in zip(encoders, decoders, tforms, weights):
+        F = encoder(Im)
+        F = (F.data.cpu().squeeze(0)).to(device)
+        Ft = tform(F)
+        Fc = ((1.0 - weight) * F + weight * Ft).cpu().unsqueeze(0).to(device)
+        Im = decoder(Fc)
+        Im = Im[:, :, :M, :N]
+
+    return Im
+
+def getGOTTransform(muc: torch.Tensor,
+                    Sigmac: torch.Tensor,
+                    mus: torch.Tensor,
+                    Sigmas: torch.Tensor,
+                    device: torch.device) -> GOTTransform:
+    '''
+        @brief Write something here...
+    '''
+    Lc, Uc = torch.linalg.eigh(Sigmac)
+    Ls = torch.linalg.eigvalsh(Sigmas)
+    Lc = Lc + abs(torch.min(Lc)) + 1e-6
+    Ls = Ls + abs(torch.min(Ls)) + 1e-6
+    Sigmach = symmetrize(torch.matmul(torch.matmul(Uc, torch.diag(torch.sqrt(Lc))), Uc.t()), device)
+    Sigmachi = symmetrize(torch.matmul(torch.matmul(Uc, torch.diag(torch.div(1.0, torch.sqrt(Lc)))), Uc.t()), device)
+    mid = symmetrize(torch.matmul(torch.matmul(Sigmach, Sigmas), Sigmach), device)
+    Lm, Um = torch.linalg.eigh(mid)
+    Lm = Lm + abs(torch.min(Lm)) + 1e-6
+    midh = symmetrize(torch.matmul(torch.matmul(Um, torch.diag(torch.sqrt(Lm))), Um.t()), device)
+    A = torch.matmul(torch.matmul(Sigmachi, midh), Sigmachi)
+    return GOTTransform(A, muc, mus, device)
+
+def getGOTTransforms(mcsc: List[Tuple[torch.Tensor, torch.Tensor]],
+                     mcss: List[Tuple[torch.Tensor, torch.Tensor]],
+                     device: torch.device,
+                     verbose: bool = False) -> List[GOTTransform]:
+    tforms = list()
+    for idx, ((muc, Sigmac), (mus, Sigmas)) in enumerate(zip(mcsc, mcss)):
+        start = time.time()
+        tforms.append(getGOTTransform(muc, Sigmac, mus, Sigmas, device))
+        end = time.time()
+        if verbose:
+            print(f'Elapsed time to create GOT map for layer {idx + 1}: {end - start}')
+
+    return tforms
+
+def getMeanCov(
+    F: torch.Tensor,
+    scale: float,
+    device: torch.device,
+    numSamples: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    '''
+        @brief Get the mean and covariance of a set of features
+        @param F The tensor containing the features of interest
+        @param scale The scale factor (1 / N) where N is the total number of samples
+        @param numSamples The number of samples to use in stochastic approximation
+    '''
+    C, H, W = F.size()
+    if numSamples > H * W:
+        numSamples = H * W
+    Fr = torch.reshape(F, (C, H * W))
+    idxs = torch.multinomial(torch.ones((H * W)), numSamples)
+    Frs = Fr[:, idxs]
+    mu = scale * torch.sum(Frs, dim = 1)
+    Frsc = Frs - (mu.cpu().unsqueeze(1).repeat(1, numSamples)).to(device)
+    Fo = torch.matmul((Frsc.t().cpu().unsqueeze(2)).to(device), (Frsc.t().cpu().unsqueeze(1)).to(device))
+    Sigma = scale * torch.sum(Fo, dim = 0)
+    return mu, Sigma
+
+def getMeanCovImage(
+    I: torch.Tensor,
+    encoder: Callable[[torch.Tensor], torch.Tensor],
+    device: torch.device,
+    numSamples: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    _, _, H, W = I.size()
+    scale = 1.0 / float(H * W)
+    F = encoder(I).data.cpu().squeeze(0).to(device)
+    return getMeanCov(F=F, scale=scale, device=device, numSamples=numSamples)
+
+def getMeanCovLayers(model: VGGEncDec,
+                     Im: torch.Tensor,
+                     device: torch.device,
+                     numSamples: int,
+                     verbose: bool = False) -> List[Tuple[torch.Tensor, torch.Tensor]]:
+    outputs = list()
+    encoders = [model.e5, model.e4, model.e3, model.e2, model.e1]
+    for idx, encoder in enumerate(encoders):
+        start = time.time()
+        outputs.append(getMeanCovImage(Im, encoder, device, numSamples=numSamples))
+        end = time.time()
+        if verbose:
+            print(f'Elapsed time for layer {idx + 1}: {end - start}')
+
+    return outputs
+
 # Define the required functions
-def symmetrize(A: torch.Tensor, tol: float = 1e-3) -> torch.Tensor:
+def symmetrize(A: torch.Tensor, device, tol: float = 1e-6) -> torch.Tensor:
+    '''
+        @brief Perform symmetrization and eigen-value shifting for a matrix that "should" be PSD
+        @param A The tensor to symmetrize (should be a matrix)
+        @param tol The amount to shift the eigenvalues by to make the matrix PSD
+        @note PSD means positive semi-definite in this context
+    '''
     m, _ = A.shape
-    return 0.5 * (A + A.t()) + tol * torch.eye(m)
+    return 0.5 * (A + A.t()) + (tol * torch.eye(m)).to(device)
 
 def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int = 1024) -> torch.Tensor:
     C, H, W = Fc.size()
@@ -271,6 +416,10 @@ def styleTransfer(model: VGGEncDec,
     return
 
 if __name__ == '__main__':
+    # Do some imports
+    from matplotlib import pyplot as plt
+    import numpy as np
+
     # Set up the argument parser
     parser = ap.ArgumentParser(description='Gaussian Optimal Transport Style Transfer')
     parser.add_argument('--contentPath',default='images/content.png',help='Path to content image')
@@ -286,6 +435,7 @@ if __name__ == '__main__':
     parser.add_argument('--decoder2', default='models/feature_invertor_conv2_1.pth', help='Path to the decoder2')
     parser.add_argument('--decoder1', default='models/feature_invertor_conv1_1.pth', help='Path to the decoder1')
     parser.add_argument('--cuda', action='store_true', help='Enables cuda')
+    parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--fineToCoarse', action = 'store_true', help = 'Start with fine resolution as opposed to coarse')
     parser.add_argument('--size', type=int, default=0, help='Resize image to a height of size while maintaining aspect ratio. No resizing by default')
     parser.add_argument('--outFolder', default='samples/', help='Folder to store output images in')
@@ -293,6 +443,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=0, help="Which GPU to run on. Defaults to zero.")
     parser.add_argument('--contentOutName', default = None, help = 'Save the content image after resizing')
     parser.add_argument('--styleOutName', default = None, help = 'Save the style image after resizing')
+    parser.add_argument('--numSamples', type=int, default=1024)
     args = parser.parse_args()
 
     if not os.path.exists(args.outFolder):
@@ -319,7 +470,13 @@ if __name__ == '__main__':
         vgg.to(device)
         Ic = Ic.to(device)
         Is = Is.to(device)
-        if not args.fineToCoarse:
-            styleTransfer(vgg, Ic, Is, args.outName, args.outFolder, weights)
-        else:
-            styleTransferFineToCoarse(vgg, Ic, Is, args.outName, args.outFolder, weights)
+
+        print("Starting the mean cov process for content image")
+        mcsc = getMeanCovLayers(vgg, Ic, device, numSamples=args.numSamples, verbose = args.verbose)
+        print("Starting the mean cov process with style image")
+        mcss = getMeanCovLayers(vgg, Is, device, numSamples=args.numSamples, verbose = args.verbose)
+        tforms = getGOTTransforms(mcsc, mcss, device, verbose = args.verbose)
+        Imst = applyStlyeTransfer(vgg, Ic, tforms, weights, device)
+        torchvision.utils.save_image(Imst.data.cpu().float(), os.path.join(args.outFolder, args.outName))
+        plt.imshow((Imst - np.min(Imst)) / (np.max(Imst) - np.min(Imst)))
+        plt.show()
