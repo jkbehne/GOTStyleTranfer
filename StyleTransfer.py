@@ -284,6 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=0, help="Which GPU to run on. Defaults to zero.")
     parser.add_argument('--contentOutName', default = None, help = 'Save the content image after resizing')
     parser.add_argument('--styleOutName', default = None, help = 'Save the style image after resizing')
+    parser.add_argument('--weights', nargs="+", type=float)
     args = parser.parse_args()
 
     if not os.path.exists(args.outFolder):
@@ -291,7 +292,8 @@ if __name__ == '__main__':
 
     # Finish the setup
     # weights = [0.0, 0.0, 0.5, 0.85, 0.85]
-    weights = [0.7, 0.7, 0.5, 0.2, 0.2]
+    # weights = [0.7, 0.7, 0.5, 0.2, 0.2]
+    assert len(args.weights) == 5, "Must have exactly 5 weights"
     Ic, Is = getImages(args.contentPath, args.stylePath, args.size)
     vgg = VGGEncDec(args)
     if args.cuda:
@@ -309,6 +311,6 @@ if __name__ == '__main__':
         torchvision.utils.save_image(Is.data.cpu().float(), os.path.join(args.outFolder, args.styleOutName))
     with torch.no_grad():
         if not args.fineToCoarse:
-            styleTransfer(vgg, Ic, Is, args.outName, args.outFolder, weights, device)
+            styleTransfer(vgg, Ic, Is, args.outName, args.outFolder, args.weights, device)
         else:
-            styleTransferFineToCoarse(vgg, Ic, Is, args.outName, args.outFolder, weights, device)
+            styleTransferFineToCoarse(vgg, Ic, Is, args.outName, args.outFolder, args.weights, device)
