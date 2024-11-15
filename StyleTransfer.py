@@ -101,7 +101,7 @@ def gaussianOptimalTransport(
         torch.matmul(Uc, torch.diag(torch.div(1.0, torch.sqrt(Lc)))), Uc.t(),
     )
     mid = torch.matmul(torch.matmul(Sigmach, Sigmas), Sigmach)
-    Lm, Um = torch.linalg.eigh(symmetrize(mid))
+    Lm, Um = torch.linalg.eigh(symmetrize(mid, device))
     midh = torch.matmul(torch.matmul(Um, torch.diag(torch.sqrt(Lm))), Um.t())
     A = torch.matmul(torch.matmul(Sigmachi, midh), Sigmachi)
     Fcc = Fcrs - muc.cpu().unsqueeze(1).repeat(1, H * W).to(device)
