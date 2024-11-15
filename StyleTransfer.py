@@ -59,11 +59,20 @@ class VGGEncDec(nn.Module):
         self.d5.eval()
 
 # Define the required functions
-def symmetrize(A: torch.Tensor, tol: float = 1e-3) -> torch.Tensor:
+def symmetrize(
+    A: torch.Tensor,
+    device: torch.device,
+    tol: float = 1e-3,
+) -> torch.Tensor:
     m, _ = A.shape
-    return 0.5 * (A + A.t()) + tol * torch.eye(m)
+    return 0.5 * (A + A.t()) + tol * torch.eye(m).to(device)
 
-def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int = 25000) -> torch.Tensor:
+def gaussianOptimalTransport(
+    Fc: torch.Tensor,
+    Fs: torch.Tensor,
+    device: torch.device,
+    nSamples: int = 25000,
+) -> torch.Tensor:
     C, H, W = Fc.size()
     Fcrs = torch.reshape(Fc, (C, H * W))
     Fsrs = torch.reshape(Fs, (C, H * W))
@@ -72,22 +81,34 @@ def gaussianOptimalTransport(Fc: torch.Tensor, Fs: torch.Tensor, nSamples: int =
     Fsds = Fsrs[:, idxs]
     muc = torch.mean(Fcds, dim = 1)
     mus = torch.mean(Fsds, dim = 1)
-    Fcdsc = Fcds - muc.cpu().unsqueeze(1).repeat(1, nSamples)
-    Fsdsc = Fsds - mus.cpu().unsqueeze(1).repeat(1, nSamples)
-    Fco = torch.matmul(Fcdsc.t().cpu().unsqueeze(2), Fcdsc.t().cpu().unsqueeze(1))
-    Fso = torch.matmul(Fsdsc.t().cpu().unsqueeze(2), Fsdsc.t().cpu().unsqueeze(1))
+    Fcdsc = Fcds - muc.cpu().unsqueeze(1).repeat(1, nSamples).to(device)
+    Fsdsc = Fsds - mus.cpu().unsqueeze(1).repeat(1, nSamples).to(device)
+    Fco = torch.matmul(
+        Fcdsc.t().cpu().unsqueeze(2).to(device),
+        Fcdsc.t().cpu().unsqueeze(1).to(device),
+    )
+    Fso = torch.matmul(
+        Fsdsc.t().cpu().unsqueeze(2).to(device),
+        Fsdsc.t().cpu().unsqueeze(1).to(device),
+    )
     Sigmac = torch.mean(Fco, dim = 0)
     Sigmas = torch.mean(Fso, dim = 0)
-    Lc, Uc = torch.linalg.eigh(symmetrize(Sigmac))
-    # Ls, Us = torch.symeig(symmetrize(Sigmas), eigenvectors = True)
-    Sigmach = torch.matmul(torch.matmul(Uc, torch.diag(torch.sqrt(Lc))), Uc.t())
-    Sigmachi = torch.matmul(torch.matmul(Uc, torch.diag(torch.div(1.0, torch.sqrt(Lc)))), Uc.t())
+    Lc, Uc = torch.linalg.eigh(symmetrize(Sigmac, device))
+    Sigmach = torch.matmul(
+        torch.matmul(Uc, torch.diag(torch.sqrt(Lc))), Uc.t(),
+    )
+    Sigmachi = torch.matmul(
+        torch.matmul(Uc, torch.diag(torch.div(1.0, torch.sqrt(Lc)))), Uc.t(),
+    )
     mid = torch.matmul(torch.matmul(Sigmach, Sigmas), Sigmach)
     Lm, Um = torch.linalg.eigh(symmetrize(mid))
     midh = torch.matmul(torch.matmul(Um, torch.diag(torch.sqrt(Lm))), Um.t())
     A = torch.matmul(torch.matmul(Sigmachi, midh), Sigmachi)
-    Fcc = Fcrs - muc.cpu().unsqueeze(1).repeat(1, H * W)
-    return torch.reshape(torch.matmul(A, Fcc) + mus.cpu().unsqueeze(1).repeat(1, H * W), (C, H, W))
+    Fcc = Fcrs - muc.cpu().unsqueeze(1).repeat(1, H * W).to(device)
+    return torch.reshape(
+        torch.matmul(A, Fcc) + mus.cpu().unsqueeze(1).repeat(1, H * W).to(device),
+        (C, H, W),
+    )
 
 def getImages(contentPath: str, stylePath: str, size: int) -> Tuple[torch.Tensor, torch.Tensor]:
     # Load both images as PIL images
@@ -115,16 +136,16 @@ def styleTransferFineToCoarse(model: VGGEncDec,
                               outName: str,
                               dirName: str,
                               weights: List[float],
-                              device) -> None:
+                              device: torch.device) -> None:
     assert Ic.shape == Is.shape, "Input images must have the same shape"
     N, C, M, N = Ic.shape
     start = time.time()
     w5 = weights[0]
     c5 = model.e5(Ic)
     s5 = model.e5(Is)
-    c5 = c5.data.cpu().squeeze(0)
-    s5 = s5.data.cpu().squeeze(0)
-    got5 = gaussianOptimalTransport(c5, s5)
+    c5 = c5.data.cpu().squeeze(0).to(device)
+    s5 = s5.data.cpu().squeeze(0).to(device)
+    got5 = gaussianOptimalTransport(c5, s5, device)
     im5 = model.d5(((1.0 - w5) * c5 + w5 * got5).cpu().unsqueeze(0).to(device))
     im5 = im5[:, :, :M, :N]
     end = time.time()
@@ -135,9 +156,9 @@ def styleTransferFineToCoarse(model: VGGEncDec,
     w4 = weights[1]
     c4 = model.e4(im5)
     s4 = model.e4(Is)
-    c4 = c4.data.cpu().squeeze(0)
-    s4 = s4.data.cpu().squeeze(0)
-    got4 = gaussianOptimalTransport(c4, s4)
+    c4 = c4.data.cpu().squeeze(0).to(device)
+    s4 = s4.data.cpu().squeeze(0).to(device)
+    got4 = gaussianOptimalTransport(c4, s4, device)
     im4 = model.d4(((1.0 - w4) * c4 + w4 * got4).cpu().unsqueeze(0).to(device))
     im4 = im4[:, :, :M, :N]
     end = time.time()
@@ -148,9 +169,9 @@ def styleTransferFineToCoarse(model: VGGEncDec,
     w3 = weights[2]
     c3 = model.e3(im4)
     s3 = model.e3(Is)
-    c3 = c3.data.cpu().squeeze(0)
-    s3 = s3.data.cpu().squeeze(0)
-    got3 = gaussianOptimalTransport(c3, s3)
+    c3 = c3.data.cpu().squeeze(0).to(device)
+    s3 = s3.data.cpu().squeeze(0).to(device)
+    got3 = gaussianOptimalTransport(c3, s3, device)
     im3 = model.d3(((1.0 - w3) * c3 + w3 * got3).cpu().unsqueeze(0).to(device))
     im3 = im3[:, :, :M, :N]
     end = time.time()
@@ -161,9 +182,9 @@ def styleTransferFineToCoarse(model: VGGEncDec,
     w2 = weights[3]
     c2 = model.e2(im3)
     s2 = model.e2(Is)
-    c2 = c2.data.cpu().squeeze(0)
-    s2 = s2.data.cpu().squeeze(0)
-    got2 = gaussianOptimalTransport(c2, s2)
+    c2 = c2.data.cpu().squeeze(0).to(device)
+    s2 = s2.data.cpu().squeeze(0).to(device)
+    got2 = gaussianOptimalTransport(c2, s2, device)
     im2 = model.d2(((1.0 - w2) * c2 + w2 * got2).cpu().unsqueeze(0).to(device))
     im2 = im2[:, :, :M, :N]
     end = time.time()
@@ -174,16 +195,15 @@ def styleTransferFineToCoarse(model: VGGEncDec,
     w1 = weights[4]
     c1 = model.e1(im2)
     s1 = model.e1(Is)
-    c1 = c1.data.cpu().squeeze(0)
-    s1 = s1.data.cpu().squeeze(0)
-    got1 = gaussianOptimalTransport(c1, s1)
+    c1 = c1.data.cpu().squeeze(0).to(device)
+    s1 = s1.data.cpu().squeeze(0).to(device)
+    got1 = gaussianOptimalTransport(c1, s1, device)
     im = model.d1(((1.0 - w1) * c1 + w1 * got1).cpu().unsqueeze(0).to(device))
     im = im[:, :, :M, :N]
     end = time.time()
     elapsed = end - start
     print(f'Elapsed time for 5th layer: {elapsed}')
     torchvision.utils.save_image(im.data.cpu().float(), os.path.join(dirName, outName))
-    return
 
 def styleTransfer(model: VGGEncDec,
                   Ic: torch.Tensor,
@@ -191,16 +211,16 @@ def styleTransfer(model: VGGEncDec,
                   outName: str,
                   dirName: str,
                   weights: List[float],
-                  device) -> None:
+                  device: torch.device) -> None:
     assert Ic.shape == Is.shape, "Input images must have the same shape"
     N, C, M, N = Ic.shape
     start = time.time()
     w5 = weights[0]
     c5 = model.e1(Ic)
     s5 = model.e1(Is)
-    c5 = c5.data.cpu().squeeze(0)
-    s5 = s5.data.cpu().squeeze(0)
-    got5 = gaussianOptimalTransport(c5, s5)
+    c5 = c5.data.cpu().squeeze(0).to(device)
+    s5 = s5.data.cpu().squeeze(0).to(device)
+    got5 = gaussianOptimalTransport(c5, s5, device)
     im5 = model.d1(((1.0 - w5) * c5 + w5 * got5).cpu().unsqueeze(0).to(device))
     im5 = im5[:, :, :M, :N]
     end = time.time()
@@ -211,9 +231,9 @@ def styleTransfer(model: VGGEncDec,
     w4 = weights[1]
     c4 = model.e2(im5)
     s4 = model.e2(Is)
-    c4 = c4.data.cpu().squeeze(0)
-    s4 = s4.data.cpu().squeeze(0)
-    got4 = gaussianOptimalTransport(c4, s4)
+    c4 = c4.data.cpu().squeeze(0).to(device)
+    s4 = s4.data.cpu().squeeze(0).to(device)
+    got4 = gaussianOptimalTransport(c4, s4, device)
     im4 = model.d2(((1.0 - w4) * c4 + w4 * got4).cpu().unsqueeze(0).to(device))
     im4 = im4[:, :, :M, :N]
     end = time.time()
@@ -224,9 +244,9 @@ def styleTransfer(model: VGGEncDec,
     w3 = weights[2]
     c3 = model.e3(im4)
     s3 = model.e3(Is)
-    c3 = c3.data.cpu().squeeze(0)
-    s3 = s3.data.cpu().squeeze(0)
-    got3 = gaussianOptimalTransport(c3, s3)
+    c3 = c3.data.cpu().squeeze(0).to(device)
+    s3 = s3.data.cpu().squeeze(0).to(device)
+    got3 = gaussianOptimalTransport(c3, s3, device)
     im3 = model.d3(((1.0 - w3) * c3 + w3 * got3).cpu().unsqueeze(0).to(device))
     im3 = im3[:, :, :M, :N]
     end = time.time()
@@ -237,9 +257,9 @@ def styleTransfer(model: VGGEncDec,
     w2 = weights[3]
     c2 = model.e4(im3)
     s2 = model.e4(Is)
-    c2 = c2.data.cpu().squeeze(0)
-    s2 = s2.data.cpu().squeeze(0)
-    got2 = gaussianOptimalTransport(c2, s2)
+    c2 = c2.data.cpu().squeeze(0).to(device)
+    s2 = s2.data.cpu().squeeze(0).to(device)
+    got2 = gaussianOptimalTransport(c2, s2, device)
     im2 = model.d4(((1.0 - w2) * c2 + w2 * got2).cpu().unsqueeze(0).to(device))
     im2 = im2[:, :, :M, :N]
     end = time.time()
@@ -250,9 +270,9 @@ def styleTransfer(model: VGGEncDec,
     w1 = weights[4]
     c1 = model.e5(im2)
     s1 = model.e5(Is)
-    c1 = c1.data.cpu().squeeze(0)
-    s1 = s1.data.cpu().squeeze(0)
-    got1 = gaussianOptimalTransport(c1, s1)
+    c1 = c1.data.cpu().squeeze(0).to(device)
+    s1 = s1.data.cpu().squeeze(0).to(device)
+    got1 = gaussianOptimalTransport(c1, s1, device)
     im = model.d5(((1.0 - w1) * c1 + w1 * got1).cpu().unsqueeze(0).to(device))
     im = im[:, :, :M, :N]
     end = time.time()
