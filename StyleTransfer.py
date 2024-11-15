@@ -71,7 +71,7 @@ def gaussianOptimalTransport(
     Fc: torch.Tensor,
     Fs: torch.Tensor,
     device: torch.device,
-    nSamples: int = 25000,
+    nSamples: int = 8192,
 ) -> torch.Tensor:
     C, H, W = Fc.size()
     Fcrs = torch.reshape(Fc, (C, H * W))
